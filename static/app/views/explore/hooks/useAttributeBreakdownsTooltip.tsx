@@ -136,7 +136,6 @@ export function useAttributeBreakdownsTooltip({
     dom.addEventListener('click', handleClickAnywhere);
     dom.addEventListener('mouseleave', handleMouseLeave);
 
-    // eslint-disable-next-line consistent-return
     return () => {
       dom.removeEventListener('click', handleClickAnywhere);
       dom.removeEventListener('mouseleave', handleMouseLeave);
@@ -185,7 +184,6 @@ export function useAttributeBreakdownsTooltip({
     document.addEventListener('mouseover', handleMouseOver);
     document.addEventListener('mouseout', handleMouseOut);
 
-    // eslint-disable-next-line consistent-return
     return () => {
       document.removeEventListener('click', handleClickActions);
       document.removeEventListener('mouseover', handleMouseOver);
