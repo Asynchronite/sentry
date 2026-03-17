@@ -12,12 +12,18 @@ import {
   usePreviewEvent,
 } from 'sentry/components/groupPreviewTooltip/utils';
 import {LoadingIndicator} from 'sentry/components/loadingIndicator';
+import {DefaultFrameActions} from 'sentry/components/stackTrace/frame/actions';
+import {FrameContent} from 'sentry/components/stackTrace/frame/frameContent';
+import {StackTraceViewStateProvider} from 'sentry/components/stackTrace/stackTraceContext';
+import {StackTraceFrames} from 'sentry/components/stackTrace/stackTraceFrames';
+import {StackTraceProvider} from 'sentry/components/stackTrace/stackTraceProvider';
 import {t} from 'sentry/locale';
 import type {Event} from 'sentry/types/event';
 import {EntryType} from 'sentry/types/event';
 import type {StacktraceType} from 'sentry/types/stacktrace';
 import {defined} from 'sentry/utils';
 import {isNativePlatform} from 'sentry/utils/platform';
+import {useOrganization} from 'sentry/utils/useOrganization';
 
 export function getStacktrace(event: Event): StacktraceType | null {
   const exceptionsWithStacktrace =
@@ -50,6 +56,26 @@ export function getStacktrace(event: Event): StacktraceType | null {
   return null;
 }
 
+function NewStackTracePreviewContent({
+  event,
+  stacktrace,
+}: {
+  event: Event;
+  stacktrace: StacktraceType;
+}) {
+  return (
+    <StackTraceViewStateProvider platform={event.platform}>
+      <StackTraceProvider event={event} stacktrace={stacktrace}>
+        <StackTraceFrames
+          borderless
+          frameActionsComponent={DefaultFrameActions}
+          frameContextComponent={FrameContent}
+        />
+      </StackTraceProvider>
+    </StackTraceViewStateProvider>
+  );
+}
+
 export function StackTracePreviewContent({
   event,
   stacktrace,
@@ -59,9 +85,16 @@ export function StackTracePreviewContent({
   stacktrace: StacktraceType;
   groupingCurrentLevel?: number;
 }) {
-  const includeSystemFrames = useMemo(() => {
-    return stacktrace?.frames?.every(frame => !frame.inApp) ?? false;
-  }, [stacktrace]);
+  const organization = useOrganization();
+  const shouldUseNewStackTrace =
+    organization?.features.includes('issue-details-new-stack-trace') &&
+    !isNativePlatform(event.platform);
+
+  if (shouldUseNewStackTrace) {
+    return <NewStackTracePreviewContent event={event} stacktrace={stacktrace} />;
+  }
+
+  const includeSystemFrames = stacktrace?.frames?.every(frame => !frame.inApp) ?? false;
 
   const framePlatform = stacktrace?.frames?.find(frame => !!frame.platform)?.platform;
   const platform = framePlatform ?? event.platform ?? 'other';
