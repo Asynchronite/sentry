@@ -86,15 +86,10 @@ export function StackTracePreviewContent({
   groupingCurrentLevel?: number;
 }) {
   const organization = useOrganization();
-  const shouldUseNewStackTrace =
-    organization?.features.includes('issue-details-new-stack-trace') &&
-    !isNativePlatform(event.platform);
 
-  if (shouldUseNewStackTrace) {
-    return <NewStackTracePreviewContent event={event} stacktrace={stacktrace} />;
-  }
-
-  const includeSystemFrames = stacktrace?.frames?.every(frame => !frame.inApp) ?? false;
+  const includeSystemFrames = useMemo(() => {
+    return stacktrace?.frames?.every(frame => !frame.inApp) ?? false;
+  }, [stacktrace]);
 
   const framePlatform = stacktrace?.frames?.find(frame => !!frame.platform)?.platform;
   const platform = framePlatform ?? event.platform ?? 'other';
@@ -119,6 +114,10 @@ export function StackTracePreviewContent({
         hideIcon
       />
     );
+  }
+
+  if (organization.features.includes('issue-details-new-stack-trace')) {
+    return <NewStackTracePreviewContent event={event} stacktrace={stacktrace} />;
   }
 
   return <StackTraceContent {...commonProps} expandFirstFrame={false} hideIcon />;
