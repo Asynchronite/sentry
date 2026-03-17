@@ -12,8 +12,8 @@ import {
   usePreviewEvent,
 } from 'sentry/components/groupPreviewTooltip/utils';
 import {LoadingIndicator} from 'sentry/components/loadingIndicator';
-import {DefaultFrameActions} from 'sentry/components/stackTrace/frame/actions';
 import {FrameContent} from 'sentry/components/stackTrace/frame/frameContent';
+import {IssueFrameActions} from 'sentry/components/stackTrace/issueStackTrace/issueFrameActions';
 import {StackTraceViewStateProvider} from 'sentry/components/stackTrace/stackTraceContext';
 import {StackTraceFrames} from 'sentry/components/stackTrace/stackTraceFrames';
 import {StackTraceProvider} from 'sentry/components/stackTrace/stackTraceProvider';
@@ -68,7 +68,7 @@ function NewStackTracePreviewContent({
       <StackTraceProvider event={event} stacktrace={stacktrace}>
         <StackTraceFrames
           borderless
-          frameActionsComponent={DefaultFrameActions}
+          frameActionsComponent={IssueFrameActions}
           frameContextComponent={FrameContent}
         />
       </StackTraceProvider>

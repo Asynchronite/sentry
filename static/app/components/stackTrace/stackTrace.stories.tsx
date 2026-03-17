@@ -1249,11 +1249,8 @@ export default Storybook.story('StackTrace', story => {
       <Flex align="center" justify="center">
         <WideHovercard
           body={
-            <StoryStackTraceProvider event={event} stacktrace={stacktrace} maxDepth={5}>
-              <StackTraceFrames
-                frameContextComponent={FrameContent}
-                frameActionsComponent={StoryFrameActions}
-              />
+            <StoryStackTraceProvider event={event} stacktrace={stacktrace}>
+              <StackTraceFrames borderless frameContextComponent={FrameContent} />
             </StoryStackTraceProvider>
           }
         >
