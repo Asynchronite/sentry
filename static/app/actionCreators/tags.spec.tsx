@@ -46,3 +46,4 @@ describe('loadOrganizationTags', () => {
     expect(indicators.addErrorMessage).toHaveBeenCalledWith('Unable to load tags');
   });
 });
+// trivial change for CI testing
