@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import Any
 
 import sentry_sdk
-from django.conf import settings
 from django.db import router, transaction
 from django.utils import timezone
 
@@ -57,14 +56,13 @@ from sentry.utils.sdk import bind_organization_context
 logger = logging.getLogger(__name__)
 
 
-if launchpad_tasks is not None:
-    # Typed RPC stub — the body is never called. The decorator registers the task signature
-    # with the external namespace; dispatch happens via process_artifact.apply_async().
-    @launchpad_tasks.register(name="process_artifact")
-    def process_artifact(
-        artifact_id: str, project_id: str, organization_id: str, requested_features: list[str]
-    ) -> None:
-        pass
+# Typed RPC stub — the body is never called. The decorator registers the task signature
+# with the external namespace; dispatch happens via process_artifact.apply_async().
+@launchpad_tasks.register(name="process_artifact")
+def process_artifact(
+    artifact_id: str, project_id: str, organization_id: str, requested_features: list[str]
+) -> None:
+    pass
 
 
 @instrumented_task(
@@ -1008,8 +1006,6 @@ def _dispatch_taskbroker_shadow(project_id: int, org_id: int, artifact_id: int) 
     # TODO: When taskbroker becomes the primary path, add PreprodArtifactSizeMetrics
     # state management here (mirroring project_preprod_artifact_update.py). Currently
     # omitted to avoid racing with the primary Kafka consumer path.
-    if not settings.TASKWORKER_USE_LIBRARY:
-        return
     try:
         requested_features: list[PreprodFeature] = []
         artifact = PreprodArtifact.objects.select_related("project__organization").get(
