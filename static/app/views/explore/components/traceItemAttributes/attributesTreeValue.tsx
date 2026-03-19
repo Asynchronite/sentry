@@ -3,6 +3,7 @@ import styled from '@emotion/styled';
 
 import {openNavigateToExternalLinkModal} from 'sentry/actionCreators/modal';
 import ExternalLink from 'sentry/components/links/externalLink';
+import {StructuredEventData} from 'sentry/components/structuredEventData';
 import {type RenderFunctionBaggage} from 'sentry/utils/discover/fieldRenderers';
 import {isUrl} from 'sentry/utils/string/isUrl';
 import {AnnotatedAttributeTooltip} from 'sentry/views/explore/components/annotatedAttributeTooltip';
@@ -14,6 +15,32 @@ import type {
   AttributesTreeContent,
   AttributesTreeRowConfig,
 } from './attributesTree';
+
+function tryParseJson(
+  value: unknown
+): Record<PropertyKey, unknown> | unknown[] | undefined {
+  const str = String(value);
+  if (!str.includes('{') && !str.includes('[')) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(str);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Returns true when all values in the object/array are primitives (no nesting).
+ */
+function isSimpleJson(value: Record<PropertyKey, unknown> | unknown[]): boolean {
+  const values = Array.isArray(value) ? value : Object.values(value);
+  return values.every(v => typeof v !== 'object' || v === null);
+}
 
 export function AttributesTreeValue<RendererExtra extends RenderFunctionBaggage>({
   config,
@@ -57,6 +84,18 @@ export function AttributesTreeValue<RendererExtra extends RenderFunctionBaggage>
       );
     }
   }
+  const parsedJson = tryParseJson(content.value);
+  if (parsedJson !== undefined) {
+    return (
+      <AttributeStructuredData
+        data={parsedJson}
+        maxDefaultDepth={2}
+        withAnnotatedText={false}
+        className={isSimpleJson(parsedJson) ? 'compact' : undefined}
+      />
+    );
+  }
+
   return isUrl(String(content.value)) ? (
     <AttributeLinkText>
       <ExternalLink
@@ -84,5 +123,31 @@ const AttributeLinkText = styled('span')`
 
   div {
     white-space: normal;
+  }
+`;
+
+const AttributeStructuredData = styled(StructuredEventData)`
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &.compact {
+    display: inline;
+
+    span[data-base-with-toggle='true'] {
+      display: inline;
+      padding-left: 0;
+    }
+
+    button {
+      display: none;
+    }
+
+    div {
+      display: inline;
+      padding-left: 0;
+    }
   }
 `;
