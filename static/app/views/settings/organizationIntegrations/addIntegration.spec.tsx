@@ -85,3 +85,4 @@ describe('AddIntegration', () => {
     await waitFor(() => expect(onAdd).toHaveBeenCalledWith(newIntegration.data));
   });
 });
+// trivial change for CI testing

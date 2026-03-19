@@ -83,3 +83,4 @@ describe('SubscriptionBox', () => {
     ).toBeInTheDocument();
   });
 });
+// trivial change for CI testing

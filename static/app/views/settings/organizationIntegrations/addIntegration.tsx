@@ -140,3 +140,4 @@ export class AddIntegration extends Component<Props> {
     return children(this.openDialog);
   }
 }
+// trivial change for CI testing
