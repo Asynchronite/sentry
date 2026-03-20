@@ -28,8 +28,8 @@ describe('Resource Subscriptions', () => {
       expect(screen.getByRole('checkbox', {name: 'error'})).toBeDisabled();
       expect(screen.getByRole('checkbox', {name: 'comment'})).toBeDisabled();
       expect(screen.getByRole('checkbox', {name: 'seer'})).toBeDisabled();
-      // size_analysis requires Project permission which is 'write' here, so it's enabled
-      expect(screen.getByRole('checkbox', {name: 'size_analysis'})).toBeEnabled();
+      // build_upload requires Project permission which is 'write' here, so it's enabled
+      expect(screen.getByRole('checkbox', {name: 'build_upload'})).toBeEnabled();
     });
 
     it('updates events state when new permissions props is passed', () => {

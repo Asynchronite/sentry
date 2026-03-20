@@ -83,9 +83,9 @@ describe('SubscriptionBox', () => {
     ).toBeInTheDocument();
   });
 
-  describe('size_analysis resource subscription', () => {
-    it('renders size_analysis checkbox enabled', () => {
-      renderComponent({resource: 'size_analysis'});
+  describe('build_upload resource subscription', () => {
+    it('renders build_upload checkbox enabled', () => {
+      renderComponent({resource: 'build_upload'});
 
       expect(screen.getByRole('checkbox')).toBeEnabled();
     });
