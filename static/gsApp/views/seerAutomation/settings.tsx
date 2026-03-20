@@ -1,5 +1,5 @@
 import {Alert} from '@sentry/scraps/alert';
-import {Flex, Stack} from '@sentry/scraps/layout';
+import {Flex, Grid, Stack} from '@sentry/scraps/layout';
 import {ExternalLink, Link} from '@sentry/scraps/link';
 
 import {Form} from 'sentry/components/forms/form';
@@ -11,6 +11,12 @@ import {DEFAULT_CODE_REVIEW_TRIGGERS} from 'sentry/types/integrations';
 import type {Organization} from 'sentry/types/organization';
 import {useOrganization} from 'sentry/utils/useOrganization';
 import {SettingsPageHeader} from 'sentry/views/settings/components/settingsPageHeader';
+import {
+  AutofixOverviewSection,
+  CodeReviewOverviewSection,
+  SCMOverviewSection,
+} from 'sentry/views/settings/seer/overview/seerOverview';
+import {useSeerOverviewData} from 'sentry/views/settings/seer/overview/useSeerOverviewData';
 
 import {SeerSettingsPageContent} from 'getsentry/views/seerAutomation/components/seerSettingsPageContent';
 import {SeerSettingsPageWrapper} from 'getsentry/views/seerAutomation/components/seerSettingsPageWrapper';
@@ -19,6 +25,7 @@ import {useCanWriteSettings} from 'getsentry/views/seerAutomation/components/use
 export function SeerAutomationSettings() {
   const organization = useOrganization();
   const canWrite = useCanWriteSettings();
+  const {stats, isLoading} = useSeerOverviewData();
 
   return (
     <SeerSettingsPageWrapper>
@@ -29,10 +36,10 @@ export function SeerAutomationSettings() {
           `Configure how Seer works with your codebase. Seer includes [autofix:Autofix] and [code_review:Code Review]. Autofix will triage your Issues as they are created, and can automatically send them to a coding agent for Root Cause Analysis, Solution generation, and PR creation. Code Review will review your pull requests to detect issues before they happen. [docs:Read the docs] to learn what Seer can do.`,
           {
             autofix: (
-              <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/autofix/#root-cause-analysis" />
+              <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/root-cause-analysis/#root-cause-analysis" />
             ),
             code_review: (
-              <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/code-review/" />
+              <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/ai-code-review/" />
             ),
             docs: (
               <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/#seer-capabilities" />
@@ -41,6 +48,11 @@ export function SeerAutomationSettings() {
         )}
       />
       <SeerSettingsPageContent>
+        <Grid columns="minmax(max-content, 140px) max-content 1fr" gap="xl">
+          <SCMOverviewSection stats={stats} isLoading={isLoading} />
+          <AutofixOverviewSection stats={stats} isLoading={isLoading} />
+          <CodeReviewOverviewSection stats={stats} isLoading={isLoading} />
+        </Grid>
         <Form
           saveOnBlur
           apiMethod="PUT"
@@ -103,7 +115,7 @@ export function SeerAutomationSettings() {
                   },
                   {
                     name: 'autoOpenPrs',
-                    label: t('Allow Autofix to create PRs by Default'),
+                    label: t('Allow Root Cause Analysis to create PRs by Default'),
                     help: (
                       <Stack gap="sm">
                         {t(
@@ -196,7 +208,7 @@ export function SeerAutomationSettings() {
                             'Enable Seer workflows that streamline creating code changes for your review, such as the ability to create pull requests or branches. [docs:Read the docs] to learn more.',
                             {
                               docs: (
-                                <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/autofix/#code-generation" />
+                                <ExternalLink href="https://docs.sentry.io/product/ai-in-sentry/seer/root-cause-analysis/#code-generation" />
                               ),
                             }
                           )}
