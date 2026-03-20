@@ -291,7 +291,7 @@ def issue_context_constructor(params: SnubaParams) -> VirtualColumnContext:
         raise ValueError("Project IDs required for Issue")
     groups = Group.objects.filter(
         project_id__in=params.project_ids,
-    )
+    ).order_by("-last_seen")[:10000]
     return VirtualColumnContext(
         from_column_name="group_id",
         to_column_name="issue",
@@ -308,6 +308,6 @@ OCCURRENCE_VIRTUAL_CONTEXTS = {
     "issue": VirtualColumnDefinition(
         constructor=issue_context_constructor,
         filter_column="group_id",
-        term_resolver=project_term_resolver,
+        term_resolver=None,
     ),
 }
