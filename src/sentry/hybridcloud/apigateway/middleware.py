@@ -22,13 +22,13 @@ class ApiGatewayMiddleware:
         if iscoroutinefunction(self.get_response):
             markcoroutinefunction(self)
 
-    def __call__(self, request: Request) -> HttpResponseBase:
+    def __call__(self, request: Request) -> Any:
         if iscoroutinefunction(self):
             return self.__acall__(request)
         return self.get_response(request)
 
     async def __acall__(self, request: Request) -> HttpResponseBase:
-        return await self.get_response(request)
+        return await self.get_response(request)  # type: ignore[misc]
 
     def process_view(
         self,
@@ -45,14 +45,14 @@ class ApiGatewayMiddleware:
         view_func: Callable[..., HttpResponseBase],
         view_args: tuple[str],
         view_kwargs: dict[str, Any],
-    ):
+    ) -> Any:
         #: we check if we're in an async or sync runtime once, then
         #  overwrite the method with the actual impl.
         try:
             asyncio.get_running_loop()
             method = self._process_view_inner
         except RuntimeError:
-            method = self._process_view_sync
+            method = self._process_view_sync  # type: ignore[assignment]
         setattr(self, "_process_view_match", method)
         return method(request, view_func, view_args, view_kwargs)
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import Callable, Generator
 from typing import Any
 from urllib.parse import urlparse
 from wsgiref.util import is_hop_by_hop
@@ -153,7 +153,7 @@ def get_raw_body(
 
 def get_raw_body_async(
     request: HttpRequest,
-) -> AsyncGenerator[bytes] | ChunkedEncodingAsyncDecoder | BodyWithLengthAiter | None:
+) -> BodyAsyncWrapper | ChunkedEncodingAsyncDecoder | BodyWithLengthAiter | None:
     if request.body:
         return BodyAsyncWrapper(request.body)
 
@@ -278,6 +278,9 @@ class ChunkedEncodingDecoder:
 
 
 class ChunkedEncodingAsyncDecoder(ChunkedEncodingDecoder):
+    def __aiter__(self):
+        return self
+
     async def __anext__(self) -> bytes:
         if self._done:
             raise StopAsyncIteration

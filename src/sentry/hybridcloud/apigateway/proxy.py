@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from urllib.parse import urljoin, urlparse
 from wsgiref.util import is_hop_by_hop
 
@@ -85,7 +85,7 @@ def _adapt_response(response: httpx.Response, remote_url: str) -> StreamingHttpR
     return streamed_response
 
 
-async def _stream_request(body) -> AsyncGenerator[bytes]:
+async def _stream_request(body: AsyncIterator[bytes]) -> AsyncGenerator[bytes]:
     async for chunk in body:
         yield chunk
 
@@ -159,7 +159,6 @@ async def proxy_cell_request(
     if settings.APIGATEWAY_PROXY_SKIP_RELAY and request.path.startswith("/api/0/relays/"):
         return StreamingHttpResponse(streaming_content="relay proxy skipped", status=404)
 
-    data: AsyncGenerator[bytes] | None = None
     if url_name == "sentry-api-0-organization-objectstore":
         if content_encoding:
             header_dict["Content-Encoding"] = content_encoding
@@ -174,7 +173,7 @@ async def proxy_cell_request(
                 target_url,
                 headers=header_dict,
                 params=dict(query_params) if query_params is not None else None,
-                content=_stream_request(data),
+                content=_stream_request(data),  # type: ignore[arg-type]
                 timeout=timeout,
             )
             resp = await proxy_client.send(req, stream=True, follow_redirects=False)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Iterator
-from typing import TYPE_CHECKING, Iterable, NamedTuple, TypeGuard, overload
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeGuard, overload
 from urllib.parse import quote, urljoin, urlparse
 
 from asgiref.sync import sync_to_async
@@ -228,7 +228,7 @@ def is_using_customer_domain(request: HttpRequest) -> TypeGuard[_HttpRequestWith
 
 
 class BodyAsyncWrapper:
-    def __init__(self, body: Iterable):
+    def __init__(self, body: Any):
         self.body = [body] if isinstance(body, bytes) else body
 
     def __aiter__(self):
