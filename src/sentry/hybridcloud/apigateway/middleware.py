@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
-# from asgiref.sync import iscoroutinefunction, markcoroutinefunction
+from asgiref.sync import async_to_sync, iscoroutinefunction, markcoroutinefunction
 from django.http.response import HttpResponseBase
 from rest_framework.request import Request
 
@@ -14,17 +15,57 @@ class ApiGatewayMiddleware:
     """Proxy requests intended for remote silos"""
 
     async_capable = True
-    sync_capable = False
+    sync_capable = True
 
     def __init__(self, get_response: Callable[[Request], HttpResponseBase]):
         self.get_response = get_response
-        # if iscoroutinefunction(self.get_response):
-        #    markcoroutinefunction(self)
+        if iscoroutinefunction(self.get_response):
+            markcoroutinefunction(self)
 
     def __call__(self, request: Request) -> HttpResponseBase:
+        if iscoroutinefunction(self):
+            return self.__acall__(request)
         return self.get_response(request)
 
-    async def process_view(
+    async def __acall__(self, request: Request) -> HttpResponseBase:
+        return await self.get_response(request)
+
+    def process_view(
+        self,
+        request: Request,
+        view_func: Callable[..., HttpResponseBase],
+        view_args: tuple[str],
+        view_kwargs: dict[str, Any],
+    ) -> HttpResponseBase | None:
+        return self._process_view_match(request, view_func, view_args, view_kwargs)
+
+    def _process_view_match(
+        self,
+        request: Request,
+        view_func: Callable[..., HttpResponseBase],
+        view_args: tuple[str],
+        view_kwargs: dict[str, Any],
+    ):
+        #: we check if we're in an async or sync runtime once, then
+        #  overwrite the method with the actual impl.
+        try:
+            asyncio.get_running_loop()
+            method = self._process_view_inner
+        except RuntimeError:
+            method = self._process_view_sync
+        setattr(self, "_process_view_match", method)
+        return method(request, view_func, view_args, view_kwargs)
+
+    def _process_view_sync(
+        self,
+        request: Request,
+        view_func: Callable[..., HttpResponseBase],
+        view_args: tuple[str],
+        view_kwargs: dict[str, Any],
+    ) -> HttpResponseBase | None:
+        return async_to_sync(self._process_view_inner)(request, view_func, view_args, view_kwargs)
+
+    async def _process_view_inner(
         self,
         request: Request,
         view_func: Callable[..., HttpResponseBase],
@@ -34,5 +75,4 @@ class ApiGatewayMiddleware:
         proxy_response = await proxy_request_if_needed(request, view_func, view_kwargs)
         if proxy_response is not None:
             return proxy_response
-        else:
-            return None
+        return None

@@ -6,22 +6,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from urllib.parse import urljoin, urlparse
 from wsgiref.util import is_hop_by_hop
 
+import httpx
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.http.response import HttpResponseBase
-from httpx import AsyncClient as HttpClient
-from httpx import TimeoutException
-from requests import Response as ExternalResponse
 
-# from requests import request as external_request
-# from requests.exceptions import Timeout
 from sentry import options
 from sentry.api.exceptions import RequestTimeout
-from sentry.objectstore.endpoints.organization import ChunkedEncodingDecoder, get_raw_body
+from sentry.objectstore.endpoints.organization import get_raw_body_async
 from sentry.silo.util import (
     PROXY_APIGATEWAY_HEADER,
     PROXY_DIRECT_LOCATION_HEADER,
@@ -35,12 +32,11 @@ from sentry.types.cell import (
     get_cell_for_organization,
 )
 from sentry.utils import metrics
-from sentry.utils.circuit_breaker2 import CircuitBreaker
-from sentry.utils.http import BodyWithLength
+from sentry.utils.http import BodyAsyncWrapper
 
 logger = logging.getLogger(__name__)
 
-proxy_client = HttpClient()
+proxy_client = httpx.AsyncClient()
 
 # Endpoints that handle uploaded files have higher timeouts configured
 # and we need to honor those timeouts when proxying.
@@ -60,21 +56,27 @@ ENDPOINT_TIMEOUT_OVERRIDE = {
 PROXY_CHUNK_SIZE = 512 * 1024
 
 
-def _parse_response(response: ExternalResponse, remote_url: str) -> StreamingHttpResponse:
-    """
-    Convert the Responses class from requests into the drf Response
-    """
+async def _stream_response_and_close(response: httpx.Response) -> AsyncGenerator[bytes]:
+    """Yield chunks from an httpx response and close the connection when done."""
+    try:
+        async for chunk in response.aiter_bytes(PROXY_CHUNK_SIZE):
+            yield chunk
+    finally:
+        await response.aclose()
 
-    # def stream_response() -> Generator[bytes]:
-    #    yield from response.iter_content(PROXY_CHUNK_SIZE)
+
+def _adapt_response(response: httpx.Response, remote_url: str) -> StreamingHttpResponse:
+    """Convert an httpx Response into a Django response."""
+
     new_headers = clean_outbound_headers(response.headers)
+    content_type = new_headers.pop("Content-Type", None)
 
     streamed_response = StreamingHttpResponse(
-        streaming_content=response.aiter_bytes(),
+        streaming_content=_stream_response_and_close(response),
         status=response.status_code,
-        content_type=new_headers.pop("Content-Type", None),
+        content_type=content_type,
     )
-    # Add Headers to response
+
     for header, value in new_headers.items():
         if not is_hop_by_hop(header):
             streamed_response[header] = value
@@ -83,13 +85,20 @@ def _parse_response(response: ExternalResponse, remote_url: str) -> StreamingHtt
     return streamed_response
 
 
+async def _stream_request(body) -> AsyncGenerator[bytes]:
+    async for chunk in body:
+        yield chunk
+
+
 async def proxy_request(
-    request: HttpRequest, org_id_or_slug: str, url_name: str
+    request: HttpRequest,
+    org_id_or_slug: str,
+    url_name: str,
 ) -> HttpResponseBase:
     """Take a django request object and proxy it to a remote location given an org_id_or_slug"""
 
     try:
-        cell = get_cell_for_organization(org_id_or_slug)
+        cell = await sync_to_async(get_cell_for_organization)(org_id_or_slug)
     except CellResolutionError as e:
         logger.info("region_resolution_error", extra={"org_slug": org_id_or_slug, "error": str(e)})
         return HttpResponse(status=404)
@@ -129,7 +138,9 @@ async def proxy_error_embed_request(
 
 
 async def proxy_cell_request(
-    request: HttpRequest, cell: Cell, url_name: str
+    request: HttpRequest,
+    cell: Cell,
+    url_name: str,
 ) -> StreamingHttpResponse:
     """Take a django request object and proxy it to a cell silo"""
     target_url = urljoin(cell.address, request.path)
@@ -138,7 +149,6 @@ async def proxy_cell_request(
     header_dict = clean_proxy_headers(request.headers)
     header_dict[PROXY_APIGATEWAY_HEADER] = "true"
 
-    # TODO: use requests session for connection pooling capabilities
     assert request.method is not None
     query_params = request.GET
 
@@ -149,31 +159,26 @@ async def proxy_cell_request(
     if settings.APIGATEWAY_PROXY_SKIP_RELAY and request.path.startswith("/api/0/relays/"):
         return StreamingHttpResponse(streaming_content="relay proxy skipped", status=404)
 
-    data: bytes | Generator[bytes] | ChunkedEncodingDecoder | BodyWithLength | None = None
+    data: AsyncGenerator[bytes] | None = None
     if url_name == "sentry-api-0-organization-objectstore":
         if content_encoding:
             header_dict["Content-Encoding"] = content_encoding
-        data = get_raw_body(request)
+        data = get_raw_body_async(request)
     else:
-        data = BodyWithLength(request)
+        data = BodyAsyncWrapper(request.body)
 
     try:
         with metrics.timer("apigateway.proxy_request.duration", tags=metric_tags):
-            async with proxy_client.stream(
+            req = proxy_client.build_request(
                 request.method,
                 target_url,
                 headers=header_dict,
                 params=dict(query_params) if query_params is not None else None,
-                data=data,
+                content=_stream_request(data),
                 timeout=timeout,
-                follow_redirects=False,
-            ) as resp:
-                return _parse_response(resp, target_url)
-    except (TimeoutException, asyncio.CancelledError):
+            )
+            resp = await proxy_client.send(req, stream=True, follow_redirects=False)
+            return _adapt_response(resp, target_url)
+    except (httpx.TimeoutException, asyncio.CancelledError):
         # remote silo timeout. Use DRF timeout instead
         raise RequestTimeout()
-
-    # new_headers = clean_outbound_headers(resp.headers)
-    # resp.headers.clear()
-    # resp.headers.update(new_headers)
-    # return _parse_response(resp, target_url)

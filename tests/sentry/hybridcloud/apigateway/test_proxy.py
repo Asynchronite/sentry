@@ -1,16 +1,14 @@
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlencode
 
-import pytest
-import requests
-import responses
+import httpx
+from asgiref.sync import async_to_sync
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import HttpResponse
 from django.test.client import RequestFactory
 from requests.exceptions import Timeout
 
-from sentry.api.exceptions import RequestTimeout
-from sentry.hybridcloud.apigateway.proxy import proxy_request
+from sentry.hybridcloud.apigateway.proxy import proxy_request as _proxy_request
 from sentry.silo.util import (
     INVALID_OUTBOUND_HEADERS,
     PROXY_APIGATEWAY_HEADER,
@@ -27,12 +25,12 @@ from sentry.testutils.helpers.response import close_streaming_response
 from sentry.testutils.silo import control_silo_test
 from sentry.utils import json
 
+proxy_request = async_to_sync(_proxy_request)
 url_name = "sentry-api-0-projets"
 
 
 @control_silo_test(cells=[ApiGatewayTestCase.REGION], include_monolith_run=True)
 class ProxyTestCase(ApiGatewayTestCase):
-    @responses.activate
     def test_simple(self) -> None:
         request = RequestFactory().get("http://sentry.io/get")
         resp = proxy_request(request, self.organization.slug, url_name)
@@ -54,7 +52,6 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.has_header(PROXY_DIRECT_LOCATION_HEADER)
         assert resp[PROXY_DIRECT_LOCATION_HEADER] == "http://us.internal.sentry.io/error"
 
-    @responses.activate
     def test_query_params(self) -> None:
         query_param_dict = dict(foo="bar", numlist=["1", "2", "3"])
         query_param_str = urlencode(query_param_dict, doseq=True)
@@ -68,17 +65,15 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert query_param_dict["foo"] == resp_json["foo"][0]
         assert query_param_dict["numlist"] == resp_json["numlist"]
 
-    @responses.activate
     def test_bad_org(self) -> None:
         request = RequestFactory().get("http://sentry.io/get")
         resp = proxy_request(request, "doesnotexist", url_name)
         assert resp.status_code == 404
 
-    @responses.activate
     def test_post(self) -> None:
         request_body = {"foo": "bar", "nested": {"int_list": [1, 2, 3]}}
-        responses.add_callback(
-            responses.POST,
+        self.httpx_router.add_callback(
+            "POST",
             "http://us.internal.sentry.io/post",
             verify_request_body(request_body, {"test": "header"}),
         )
@@ -94,11 +89,10 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.has_header(PROXY_DIRECT_LOCATION_HEADER)
         assert resp[PROXY_DIRECT_LOCATION_HEADER] == "http://us.internal.sentry.io/post"
 
-    @responses.activate
     def test_put(self) -> None:
         request_body = {"foo": "bar", "nested": {"int_list": [1, 2, 3]}}
-        responses.add_callback(
-            responses.PUT,
+        self.httpx_router.add_callback(
+            "PUT",
             "http://us.internal.sentry.io/put",
             verify_request_body(request_body, {"test": "header"}),
         )
@@ -114,11 +108,10 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.has_header(PROXY_DIRECT_LOCATION_HEADER)
         assert resp[PROXY_DIRECT_LOCATION_HEADER] == "http://us.internal.sentry.io/put"
 
-    @responses.activate
     def test_patch(self) -> None:
         request_body = {"foo": "bar", "nested": {"int_list": [1, 2, 3]}}
-        responses.add_callback(
-            responses.PATCH,
+        self.httpx_router.add_callback(
+            "PATCH",
             "http://us.internal.sentry.io/patch",
             verify_request_body(request_body, {"test": "header"}),
         )
@@ -134,11 +127,10 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.has_header(PROXY_DIRECT_LOCATION_HEADER)
         assert resp[PROXY_DIRECT_LOCATION_HEADER] == "http://us.internal.sentry.io/patch"
 
-    @responses.activate
     def test_head(self) -> None:
         request_body = {"foo": "bar", "nested": {"int_list": [1, 2, 3]}}
-        responses.add_callback(
-            responses.HEAD,
+        self.httpx_router.add_callback(
+            "HEAD",
             "http://us.internal.sentry.io/head",
             verify_request_headers({"test": "header"}),
         )
@@ -154,11 +146,10 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.has_header(PROXY_DIRECT_LOCATION_HEADER)
         assert resp[PROXY_DIRECT_LOCATION_HEADER] == "http://us.internal.sentry.io/head"
 
-    @responses.activate
     def test_delete(self) -> None:
         request_body = {"foo": "bar", "nested": {"int_list": [1, 2, 3]}}
-        responses.add_callback(
-            responses.DELETE,
+        self.httpx_router.add_callback(
+            "DELETE",
             "http://us.internal.sentry.io/delete",
             verify_request_body(request_body, {"test": "header"}),
         )
@@ -174,7 +165,6 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.has_header(PROXY_DIRECT_LOCATION_HEADER)
         assert resp[PROXY_DIRECT_LOCATION_HEADER] == "http://us.internal.sentry.io/delete"
 
-    @responses.activate
     def test_file_upload(self) -> None:
         foo = dict(test="a", file="b", what="c")
         contents = json.dumps(foo).encode()
@@ -183,8 +173,8 @@ class ProxyTestCase(ApiGatewayTestCase):
             "foo": "bar",
         }
 
-        responses.add_callback(
-            responses.POST,
+        self.httpx_router.add_callback(
+            "POST",
             "http://us.internal.sentry.io/post",
             verify_file_body(contents, {"test": "header"}),
         )
@@ -197,14 +187,13 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.status_code == 200
         assert resp_json["proxy"]
 
-    @responses.activate
     def test_alternate_content_type(self) -> None:
         # Check form encoded files also work
         foo = dict(test="a", file="b", what="c")
         contents = urlencode(foo, doseq=True).encode("utf-8")
         request_body = contents
-        responses.add_callback(
-            responses.POST,
+        self.httpx_router.add_callback(
+            "POST",
             "http://us.internal.sentry.io/post",
             verify_request_body(contents, {"test": "header"}),
         )
@@ -219,16 +208,15 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.status_code == 200
         assert resp_json["proxy"]
 
-    @responses.activate
     def test_apply_apigateway_proxy_header(self) -> None:
-        def request_callback(request: requests.PreparedRequest) -> tuple[int, dict[str, str], str]:
+        def request_callback(request: httpx.Request) -> tuple[int, dict[str, str], str]:
             assert request.headers.get(PROXY_APIGATEWAY_HEADER), (
                 "Proxied requests should have a header added"
             )
             return 200, {"proxied": "yes"}, json.dumps({"success": True})
 
-        responses.add_callback(
-            responses.POST,
+        self.httpx_router.add_callback(
+            "POST",
             "http://us.internal.sentry.io/post",
             request_callback,
         )
@@ -243,11 +231,10 @@ class ProxyTestCase(ApiGatewayTestCase):
         assert resp.status_code == 200
         assert resp["proxied"] == "yes"
 
-    @responses.activate
     def test_strip_request_headers(self) -> None:
         request_body = {"foo": "bar", "nested": {"int_list": [1, 2, 3]}}
-        responses.add_callback(
-            responses.POST,
+        self.httpx_router.add_callback(
+            "POST",
             "http://us.internal.sentry.io/post",
             verify_request_body(request_body, {"test": "header"}),
         )

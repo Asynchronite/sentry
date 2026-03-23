@@ -31,7 +31,9 @@ def _get_view_silo_mode(view_func: Callable[..., HttpResponseBase]) -> frozenset
 
 
 async def proxy_request_if_needed(
-    request: Request, view_func: Callable[..., HttpResponseBase], view_kwargs: dict[str, Any]
+    request: Request,
+    view_func: Callable[..., HttpResponseBase],
+    view_kwargs: dict[str, Any],
 ) -> HttpResponseBase | None:
     """
     Main execution flow for the API Gateway.
@@ -73,7 +75,7 @@ async def proxy_request_if_needed(
                 "kind": "error-embed",
             },
         )
-        return proxy_error_embed_request(request, dsn, url_name)
+        return await proxy_error_embed_request(request, dsn, url_name)
 
     if (
         request.resolver_match
