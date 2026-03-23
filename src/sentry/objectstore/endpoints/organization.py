@@ -280,5 +280,5 @@ class ChunkedEncodingDecoder:
 class ChunkedEncodingAsyncDecoder(ChunkedEncodingDecoder):
     async def __anext__(self) -> bytes:
         if self._done:
-            raise StopIteration
+            raise StopAsyncIteration
         return await sync_to_async(self.read)()

@@ -13,7 +13,7 @@ from wsgiref.util import is_hop_by_hop
 import httpx
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from django.http.response import HttpResponseBase
 
 from sentry import options
