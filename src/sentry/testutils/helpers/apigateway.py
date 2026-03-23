@@ -191,7 +191,7 @@ def verify_request_params(params, headers):
     """Wrapper for a callback function for HttpxMockRouter.add_callback."""
 
     def request_callback(request: httpx.Request):
-        request_params = parse_qs(request.url.split("?")[1])
+        request_params = parse_qs(str(request.url).split("?")[1])
         assert (request.headers[key] == headers[key] for key in headers)
         for key in params:
             assert key in request_params
@@ -261,7 +261,7 @@ class ApiGatewayTestCase(APITestCase):
 
         # Echos the query params and header back for verification
         def return_request_params(request: httpx.Request):
-            params = parse_qs(request.url.split("?")[1])
+            params = parse_qs(str(request.url).split("?")[1])
             return (200, dict(request.headers), json.dumps(params).encode())
 
         self.httpx_router.add_callback("GET", f"{self.REGION.address}/echo", return_request_params)
