@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import os
 import random
 import re
 import time
@@ -17,6 +18,7 @@ from urllib.parse import urlencode
 from uuid import UUID, uuid4
 from zlib import compress
 
+import httpx
 import pytest
 import requests
 import responses
@@ -36,7 +38,6 @@ from django.urls import resolve, reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
 from google.protobuf.timestamp_pb2 import Timestamp
-from requests.utils import CaseInsensitiveDict, get_encoding_from_headers
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -678,36 +679,41 @@ class APITestCaseMixin:
     def api_gateway_proxy_stubbed(self):
         """Mocks a fake api gateway proxy that redirects via Client objects"""
 
-        def proxy_raw_request(
-            method: str,
-            url: str,
-            headers: Mapping[str, str],
-            params: Mapping[str, str] | None,
-            data: Any,
-            **kwds: Any,
-        ) -> requests.Response:
+        def _proxy_transport_handler(request: httpx.Request) -> httpx.Response:
             from django.test.client import Client
 
             client = Client()
-            extra: Mapping[str, Any] = {
-                f"HTTP_{k.replace('-', '_').upper()}": v for k, v in headers.items()
+            url = str(request.url)
+            # Translate httpx headers into the META format Django expects.
+            extra: dict[str, Any] = {
+                f"HTTP_{k.replace('-', '_').upper()}": v for k, v in request.headers.items()
             }
-            if params:
-                url += "?" + urlencode(params)
-            with assume_test_silo_mode(SiloMode.CELL):
-                resp = getattr(client, method.lower())(
-                    url, b"".join(data), headers["Content-Type"], **extra
-                )
-            response = requests.Response()
-            response.status_code = resp.status_code
-            response.headers = CaseInsensitiveDict(resp.headers)
-            response.encoding = get_encoding_from_headers(response.headers)
-            response.raw = BytesIO(resp.content)
-            return response
+            content_type = request.headers.get("content-type", "application/octet-stream")
+            # The handler is invoked synchronously by MockTransport inside
+            # the async event loop.  Allow Django ORM access that would
+            # otherwise be blocked by SynchronousOnlyOperation.
+            old_flag = os.environ.get("DJANGO_ALLOW_ASYNC_UNSAFE")
+            os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+            try:
+                with assume_test_silo_mode(SiloMode.CELL):
+                    resp = getattr(client, request.method.lower())(
+                        url, request.content, content_type, **extra
+                    )
+            finally:
+                if old_flag is None:
+                    os.environ.pop("DJANGO_ALLOW_ASYNC_UNSAFE", None)
+                else:
+                    os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = old_flag
+            return httpx.Response(
+                status_code=resp.status_code,
+                headers=dict(resp.headers),
+                content=resp.content,
+            )
 
+        mock_client = httpx.AsyncClient(transport=httpx.MockTransport(_proxy_transport_handler))
         with mock.patch(
-            "sentry.hybridcloud.apigateway.proxy.external_request",
-            new=proxy_raw_request,
+            "sentry.hybridcloud.apigateway.proxy.proxy_client",
+            new=mock_client,
         ):
             yield
 
