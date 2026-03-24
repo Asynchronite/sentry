@@ -58,7 +58,7 @@ class SentryHTTPServer(Service):
             for k, v in extra_options.items():
                 options[k] = v
 
-        options.setdefault("module", f"sentry.{iface}:application")
+        options.setdefault("module", f"sentry.{iface[:4]}:application")
         options.setdefault("iface", iface)
         options.setdefault("host", host)
         options.setdefault("port", port)
